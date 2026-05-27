@@ -10,7 +10,7 @@
 		<string>App Icon</string>
 	</dict>
 	<key>CFBundleIdentifier</key>
-	<string>com.fiore.trolldecrypt</string>
+	<string>com.nohamr.trolldecrypt</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundlePackageType</key>

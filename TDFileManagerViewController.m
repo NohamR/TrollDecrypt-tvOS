@@ -50,12 +50,12 @@
 
     cell.textLabel.text = self.fileList[indexPath.row];
     cell.detailTextLabel.text = [dateFormatter stringFromDate:date];
-    cell.detailTextLabel.textColor = [UIColor systemGray2Color];
+    cell.detailTextLabel.textColor = [UIColor grayColor];
     cell.imageView.image = [UIImage systemImageNamed:@"doc.fill"];
 
     UILabel *label = [[UILabel alloc] init];
     label.text = [NSString stringWithFormat:@"%.2f MB", [fileSize doubleValue] / 1000000.0f];
-    label.textColor = [UIColor systemGray2Color];
+    label.textColor = [UIColor grayColor];
     label.font = [UIFont systemFontOfSize:12.0f];
     [label sizeToFit];
     label.textAlignment = NSTextAlignmentCenter;
@@ -73,6 +73,7 @@
     return YES;
 }
 
+#if !TARGET_OS_TV
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
     UIContextualAction *deleteAction = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"Delete" handler:^(UIContextualAction *action, UIView *sourceView, void (^completionHandler)(BOOL)) {
         NSString *file = self.fileList[indexPath.row];
@@ -84,6 +85,7 @@
     UISwipeActionsConfiguration *swipeActions = [UISwipeActionsConfiguration configurationWithActions:@[deleteAction]];
     return swipeActions;
 }
+#endif
 
 UIWindow *kw2 = NULL;
 UIAlertController *doneController2 = NULL;
@@ -111,8 +113,11 @@ UIAlertController *doneController2 = NULL;
         [sharingUI load];
 
         id sharingView = [[objc_getClass("SFAirDropSharingViewControllerTV") alloc] initWithSharingItems:@[url]];
-        [sharingView setCompletionHandler:^(NSError *error) {
-            [self dismissViewControllerAnimated:true completion:nil];
+        [self dismissViewControllerAnimated:NO completion:^{
+            [self presentViewController:sharingView animated:YES completion:nil];
+            [sharingView setCompletionHandler:^(NSError *error) {
+                [self dismissViewControllerAnimated:YES completion:nil];
+            }];
         }];
 
         [self presentViewController:sharingView animated:true completion:nil];

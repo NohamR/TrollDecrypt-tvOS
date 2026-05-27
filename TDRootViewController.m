@@ -9,13 +9,17 @@
 
     self.apps = appList();
     self.title = @"TrollDecrypt";
+#if !TARGET_OS_TV
 	self.navigationController.navigationBar.prefersLargeTitles = YES;
+#endif
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"info.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(about:)];
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"folder"] style:UIBarButtonItemStylePlain target:self action:@selector(openDocs:)];
 
+#if !TARGET_OS_TV
     UIRefreshControl *refreshControl = [[UIRefreshControl alloc] init];
     [refreshControl addTarget:self action:@selector(refreshApps:) forControlEvents:UIControlEventValueChanged];
     self.refreshControl = refreshControl;
+#endif
 }
 
 - (void)viewDidAppear:(bool)animated {
@@ -53,11 +57,13 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+#if !TARGET_OS_TV
 - (void)refreshApps:(UIRefreshControl *)refreshControl {
     self.apps = appList();
     [self.tableView reloadData];
     [refreshControl endRefreshing];
 }
+#endif
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return 1;
