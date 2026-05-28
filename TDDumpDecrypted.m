@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <spawn.h>
 #include <string.h>
 #include <fcntl.h>
 #include <dlfcn.h>
@@ -504,14 +505,14 @@ int find_off_cryptid(const char *filePath) {
     if (task_for_pid(mach_task_self(), pid, &targetTask))
     {
         NSLog(@"[trolldecrypt] Can't execute task_for_pid! Do you have the right permissions/entitlements?\n");
-        exit(1);
+        return;
     }
 
     //numberOfImages
     struct task_dyld_info dyld_info;
     mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
 
-    if(task_info(targetTask, TASK_DYLD_INFO, (task_info_t)&dyld_info, &count) != KERN_SUCCESS) exit(1);
+    if(task_info(targetTask, TASK_DYLD_INFO, (task_info_t)&dyld_info, &count) != KERN_SUCCESS) return;
 
     mach_msg_type_number_t size = sizeof(struct dyld_all_image_infos);
     uint8_t* data = readProcessMemory(targetTask, dyld_info.all_image_info_addr, &size);
@@ -586,6 +587,108 @@ int find_off_cryptid(const char *filePath) {
 	// Replace encrypted binaries with decrypted versions
 	NSLog(@"[trolldecrypt] ======== START DECRYPTION PROCESS ========");
 	[self dumpDecrypted:pid];
+	
+	// Find embedded app extensions (.appex) and decrypt them
+	NSLog(@"[trolldecrypt] ======== START APP EXTENSION DECRYPTION ========");
+	NSString *pluginsPath = [appDir stringByAppendingPathComponent:@"PlugIns"];
+	NSLog(@"[trolldecrypt] Looking for app extensions in: %@", pluginsPath);
+	if ([fm fileExistsAtPath:pluginsPath]) {
+		NSArray *plugins = [fm contentsOfDirectoryAtPath:pluginsPath error:nil];
+		for (NSString *plugin in plugins) {
+			if ([plugin hasSuffix:@".appex"]) {
+				NSString *appexPath = [pluginsPath stringByAppendingPathComponent:plugin];
+				NSString *executableName = [plugin stringByDeletingPathExtension];
+				NSString *executablePath = [appexPath stringByAppendingPathComponent:executableName];
+				
+				if ([fm fileExistsAtPath:executablePath]) {
+					NSLog(@"[trolldecrypt] Found app extension: %@", executablePath);
+					pid_t appex_pid = -1;
+                    
+					void *handle = dlopen("/usr/lib/libSystem.dylib", RTLD_NOW);
+					int (*my_posix_spawnattr_init)(posix_spawnattr_t *) = (int (*)(posix_spawnattr_t *))dlsym(handle, "posix_spawnattr_init");
+					int (*my_posix_spawnattr_setflags)(posix_spawnattr_t *, short) = (int (*)(posix_spawnattr_t *, short))dlsym(handle, "posix_spawnattr_setflags");
+					int (*my_posix_spawnattr_destroy)(posix_spawnattr_t *) = (int (*)(posix_spawnattr_t *))dlsym(handle, "posix_spawnattr_destroy");
+					int (*my_posix_spawn)(pid_t *, const char *, void *, const posix_spawnattr_t *, char *const *, char *const *) = (int (*)(pid_t *, const char *, void *, const posix_spawnattr_t *, char *const *, char *const *))dlsym(handle, "posix_spawn");
+
+					if (my_posix_spawn && my_posix_spawnattr_init && my_posix_spawnattr_setflags) {
+						posix_spawnattr_t attr;
+						my_posix_spawnattr_init(&attr);
+						my_posix_spawnattr_setflags(&attr, POSIX_SPAWN_START_SUSPENDED);
+						
+						const char *argv[] = {[executablePath UTF8String], NULL};
+						extern char **environ;
+						int envCount = 0;
+						while (environ[envCount] != NULL) envCount++;
+						char **new_environ = malloc((envCount + 2) * sizeof(char *));
+						for (int i = 0; i < envCount; i++) {
+							new_environ[i] = environ[i];
+						}
+						new_environ[envCount] = "XPC_SERVICE_NAME=appex_decryption";
+						new_environ[envCount + 1] = NULL;
+						
+						int ret = my_posix_spawn(&appex_pid, [executablePath UTF8String], NULL, &attr, (char *const *)argv, new_environ);
+						free(new_environ);
+						if(my_posix_spawnattr_destroy) my_posix_spawnattr_destroy(&attr);
+						
+						if (ret == 0 && appex_pid > 0) {
+							NSLog(@"[trolldecrypt] Spawned appex with PID %d, waiting for dyld...", appex_pid);
+							
+							vm_map_t targetTask = 0;
+							if (task_for_pid(mach_task_self(), appex_pid, &targetTask) == KERN_SUCCESS) {
+								// Resume the suspended process so dyld can map the binaries into memory
+								kill(appex_pid, SIGCONT);
+								
+								BOOL dyld_ready = NO;
+								for (int k = 0; k < 500; k++) {
+									struct task_dyld_info dyld_info;
+									mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
+									
+									if (task_info(targetTask, TASK_DYLD_INFO, (task_info_t)&dyld_info, &count) == KERN_SUCCESS) {
+										if (dyld_info.all_image_info_addr != 0) {
+											mach_msg_type_number_t size = sizeof(struct dyld_all_image_infos);
+											uint8_t* data = readProcessMemory(targetTask, dyld_info.all_image_info_addr, &size);
+											
+											if (data != NULL) {
+												struct dyld_all_image_infos* infos = (struct dyld_all_image_infos *) data;
+												if (infos->infoArrayCount > 0) {
+													// dyld mapped the images! Suspend the process immediately.
+													kill(appex_pid, SIGSTOP);
+													dyld_ready = YES;
+													// Clean up allocated memory by vm_read in readProcessMemory
+													vm_deallocate(mach_task_self(), (vm_address_t)data, size);
+													break;
+												}
+												vm_deallocate(mach_task_self(), (vm_address_t)data, size);
+											}
+										}
+									}
+									usleep(1000); // 1ms
+								}
+								
+								if (dyld_ready) {
+									NSLog(@"[trolldecrypt] Appex dyld mapping caught successfully, dumping!");
+									[self dumpDecrypted:appex_pid];
+								} else {
+									NSLog(@"[trolldecrypt] Failed to catch dyld mapping in time for appex.");
+								}
+							} else {
+								NSLog(@"[trolldecrypt] Can't execute task_for_pid on appex_pid %d", appex_pid);
+							}
+							
+							kill(appex_pid, SIGKILL);
+							// Wait for the child to exit
+							int status;
+							waitpid(appex_pid, &status, WNOHANG);
+						} else {
+							NSLog(@"[trolldecrypt] Failed to spawn appex (error %d)", ret);
+						}
+					}
+					dlclose(handle);
+				}
+			}
+		}
+	}
+
 	NSLog(@"[trolldecrypt] ======== DECRYPTION COMPLETE  ========");
 
 	// ZIP it up
