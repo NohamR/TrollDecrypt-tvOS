@@ -124,6 +124,14 @@ UIAlertController *doneController2 = NULL;
     }];
     [doneController2 addAction:openAction];
 
+    UIAlertAction *deleteFileAction = [UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
+        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+        [self refresh];
+        [kw2 removeFromSuperview];
+        kw2.hidden = YES;
+    }];
+    [doneController2 addAction:deleteFileAction];
+
     [self presentViewController:doneController2 animated:YES completion:nil];
 }
 
