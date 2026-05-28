@@ -52,7 +52,7 @@
 }
 
 - (void)about:(id)sender {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TrollDecrypt" message:@"by fiore\nIcon by @super.user\nbfdecrypt by @bishopfox\ndumpdecrypted by @i0n1c\nUpdated for TrollStore by @wh1te4ever\nPorting to tvOS by @straight-tamago" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TrollDecrypt" message:@"by fiore\nIcon by @super.user\nbfdecrypt by @bishopfox\ndumpdecrypted by @i0n1c\nUpdated for TrollStore by @wh1te4ever\nPorting to tvOS by @straight-tamago\nFixed by NohamR" preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"Dismiss" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }

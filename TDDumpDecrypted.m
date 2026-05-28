@@ -524,6 +524,9 @@ int find_off_cryptid(const char *filePath) {
     uint32_t numberOfImages = infos->infoArrayCount;
     mach_vm_address_t imageAddress = 0;
     const char *appPath = [[self appPath] UTF8String];
+    if(strstr(appPath, "/private") == appPath) {
+        appPath += 8;
+    }
 
     NSLog(@"[trolldecrypt] There are %d images mapped.", numberOfImages);
 
